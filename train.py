@@ -729,7 +729,8 @@ def _parse_args():
 def main():
     setup_default_logging()
     args, args_text = _parse_args()
-
+    print(args)
+    print(args_text)
     if args.log_wandb:
         if has_wandb and args.local_rank == 0:
             wandb.init(project=args.experiment, config=args)
