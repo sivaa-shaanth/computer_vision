@@ -73,6 +73,11 @@ except ImportError:
 import warnings
 
 
+
+
+
+
+
 import models
 
 warnings.filterwarnings("ignore")
@@ -96,6 +101,8 @@ parser.add_argument(
 parser = argparse.ArgumentParser(description="PyTorch ImageNet Training")
 
 # Dataset parameters
+parser.add_argument("data_dir", metavar="DIR", help="path to dataset")
+
 parser.add_argument(
     "--model",
     default="resnet50",
@@ -146,7 +153,9 @@ parser.add_argument(
     "--epochs", type=int, default=300, metavar="N", help="number of epochs to train (default: 300)"
 )
 
+
 #--------------------------------------------------------------------------------------------------------------
+
 
 
 
