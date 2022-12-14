@@ -171,9 +171,7 @@ def _parse_args():
     # defaults will have been overridden if config file specified.
     args = parser.parse_args(remaining)
     parser_args = {}
-    with open('/content/computer_vision/args.txt','r') as data: 
-      dict_string = data.read()
-      parser_args = json.loads(dict_string)
+    parser_args = json.load(open("/content/computer_vision/args.txt"))
     for k, v in parser_args.items():
         parser.add_argument('--' + k, default=v)
 
