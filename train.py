@@ -13,6 +13,7 @@ import argparse
 import logging
 import os
 import time
+import json
 from collections import OrderedDict
 from contextlib import suppress
 from datetime import datetime
@@ -771,7 +772,7 @@ def main():
     setup_default_logging()
     args, args_text = _parse_args()
     file1 = open('myfile.txt', 'w')
-    file1.write(args)
+    file1.write(json.dumps(vars(args)))
     if args.log_wandb:
         if has_wandb and args.local_rank == 0:
             wandb.init(project=args.experiment, config=args)
