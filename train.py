@@ -770,8 +770,8 @@ def _parse_args():
 def main():
     setup_default_logging()
     args, args_text = _parse_args()
-    print(type(args))
-    print(args_text)
+    file1 = open('myfile.txt', 'w')
+    file1.write(args)
     if args.log_wandb:
         if has_wandb and args.local_rank == 0:
             wandb.init(project=args.experiment, config=args)
