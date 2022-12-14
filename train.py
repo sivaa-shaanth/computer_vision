@@ -71,6 +71,47 @@ except ImportError:
 
 import warnings
 
+key_value_pairs = {
+    "aa": "rand-m9-mstd0.5-inc1",
+    "amp": "true",
+    "apex_amp": "false",
+    "aug_repeats": "0",
+    "aug_splits": "0",
+    "batch_size": "128",
+    "bce_loss": "false",
+    "bce_target_thresh": "null",
+    "bn_eps": "null",
+    "bn_momentum": "null",
+    "bn_tf": "false",
+    "channels_last": "false",
+    "checkpoint_hist": "10",
+    "class_map": "",
+    "clip_grad": "5.0",
+    "clip_mode": "norm",
+    "color_jitter": "0.4",
+    "cooldown_epochs": "10",
+    "crop_pct": "null",
+    "cutmix": "1.0",
+    "cutmix_minmax": "null",
+    "data_dir": "/content/Data/",
+    "dataset": "",
+    "dataset_download": "false",
+    "decay_epochs": "30",
+    "decay_rate": "0.1",
+    "dist_bn": "reduce",
+    "drop": "0.0",
+    "drop_block": "null",
+    "drop_connect": "null",
+    "drop_path": "0.2",
+    "epoch_repeats": "0.0",
+    "epochs": "10",
+    "eval_met":""
+}
+
+
+
+
+
 import models
 
 warnings.filterwarnings("ignore")
@@ -729,7 +770,7 @@ def _parse_args():
 def main():
     setup_default_logging()
     args, args_text = _parse_args()
-    print(args)
+    print(type(args))
     print(args_text)
     if args.log_wandb:
         if has_wandb and args.local_rank == 0:
