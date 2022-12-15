@@ -1,14 +1,3 @@
-""" ImageNet Training Script
-This is intended to be a lean and easily modifiable ImageNet training script that reproduces ImageNet
-training results with some of the latest networks and training techniques. It favours canonical PyTorch
-and standard Python style over trying to be able to 'do it all.' That said, it offers quite a few speed
-and training result improvements over the usual PyTorch example scripts. Repurpose as you see fit.
-This script was started from an early version of the PyTorch ImageNet example
-(https://github.com/pytorch/examples/tree/master/imagenet)
-NVIDIA CUDA specific speedups adopted from NVIDIA Apex examples
-(https://github.com/NVIDIA/apex/tree/master/examples/imagenet)
-Hacked together by / Copyright 2020 Ross Wightman (https://github.com/rwightman)
-"""
 import argparse
 import logging
 import os
@@ -73,11 +62,6 @@ except ImportError:
 import warnings
 
 
-
-
-
-
-
 import models
 
 warnings.filterwarnings("ignore")
@@ -85,8 +69,6 @@ warnings.filterwarnings("ignore")
 torch.backends.cudnn.benchmark = True
 _logger = logging.getLogger("train")
 
-# The first arg parser parses out only the --config argument, this argument is used to
-# load a yaml file containing key-values that override the defaults for the main parser below
 config_parser = parser = argparse.ArgumentParser(description="Training Config", add_help=False)
 parser.add_argument(
     "-c",
@@ -160,7 +142,6 @@ parser.add_argument(
 
 
 def _parse_args():
-    # Do we have a config file to parse?
     args_config, remaining = config_parser.parse_known_args()
     if args_config.config:
         with open(args_config.config, "r") as f:
@@ -185,35 +166,12 @@ def main():
     args, args_text = _parse_args()
     # with open('args.txt','w') as data:
     #     data.write(json.dumps(vars(args)))
-    if args.log_wandb:
-        if has_wandb and args.local_rank == 0:
-            wandb.init(project=args.experiment, config=args)
-            wandb.run.name = args.model
-        else:
-            _logger.warning(
-                "You've requested to log metrics to wandb but package not found. "
-                "Metrics not being logged to wandb, try `pip install wandb`"
-            )
-
+    wandb.run.name = args.model
     args.prefetcher = not args.no_prefetcher
     args.distributed = False
-    if "WORLD_SIZE" in os.environ:
-        args.distributed = int(os.environ["WORLD_SIZE"]) > 1
     args.device = "cuda:0"
     args.world_size = 1
     args.rank = 0  # global rank
-    if args.distributed:
-        args.device = "cuda:%d" % args.local_rank
-        torch.cuda.set_device(args.local_rank)
-        torch.distributed.init_process_group(backend="nccl", init_method="env://")
-        args.world_size = torch.distributed.get_world_size()
-        args.rank = torch.distributed.get_rank()
-        _logger.info(
-            "Training in distributed mode with multiple processes, 1 GPU per process. Process %d, total %d."
-            % (args.rank, args.world_size)
-        )
-    else:
-        _logger.info("Training with a single process on 1 GPUs.")
     assert args.rank >= 0
 
     # resolve AMP arguments based on PyTorch / Apex availability
@@ -228,11 +186,6 @@ def main():
         use_amp = "apex"
     elif args.native_amp and has_native_amp:
         use_amp = "native"
-    elif args.apex_amp or args.native_amp:
-        _logger.warning(
-            "Neither APEX or native Torch AMP is available, using float32. "
-            "Install NVIDA apex or upgrade to PyTorch 1.6"
-        )
 
     random_seed(args.seed, args.rank)
 
@@ -241,23 +194,13 @@ def main():
         pretrained=args.pretrained,
         num_classes=args.num_classes,
         drop_rate=args.drop,
-        drop_connect_rate=args.drop_connect,  # DEPRECATED, use drop_path
+        drop_connect_rate=args.drop_connect,
         drop_path_rate=args.drop_path,
         drop_block_rate=args.drop_block,
         global_pool=args.gp,
-        # bn_tf=args.bn_tf,
-        # bn_momentum=args.bn_momentum,
-        # bn_eps=args.bn_eps,
         scriptable=args.torchscript,
         checkpoint_path=args.initial_checkpoint,
     )
-    if args.num_classes is None:
-        assert hasattr(
-            model, "num_classes"
-        ), "Model must have `num_classes` attr if not set on cmd line/config."
-        args.num_classes = (
-            model.num_classes
-        )  # FIXME handle model default vs config num_classes more elegantly
 
     if args.local_rank == 0:
         _logger.info(
@@ -268,38 +211,11 @@ def main():
 
     # setup augmentation batch splits for contrastive loss or split bn
     num_aug_splits = 0
-    if args.aug_splits > 0:
-        assert args.aug_splits > 1, "A split of 1 makes no sense"
-        num_aug_splits = args.aug_splits
-
-    # enable split bn (separate bn stats per batch-portion)
-    if args.split_bn:
-        assert num_aug_splits > 1 or args.resplit
-        model = convert_splitbn_model(model, max(num_aug_splits, 2))
-
+    
     # move model to GPU, enable channels last layout if set
     model.cuda()
     if args.channels_last:
         model = model.to(memory_format=torch.channels_last)
-
-    # setup synchronized BatchNorm for distributed training
-    if args.distributed and args.sync_bn:
-        assert not args.split_bn
-        if has_apex and use_amp == "apex":
-            # Apex SyncBN preferred unless native amp is activated
-            model = convert_syncbn_model(model)
-        else:
-            model = torch.nn.SyncBatchNorm.convert_sync_batchnorm(model)
-        if args.local_rank == 0:
-            _logger.info(
-                "Converted model to use Synchronized BatchNorm. WARNING: You may have issues if using "
-                "zero initialized BN layers (enabled by default for ResNets) while sync-bn enabled."
-            )
-
-    if args.torchscript:
-        assert not use_amp == "apex", "Cannot use APEX AMP with torchscripted model"
-        assert not args.sync_bn, "Cannot use SyncBatchNorm with torchscripted model"
-        model = torch.jit.script(model)
 
     optimizer = create_optimizer_v2(model, **optimizer_kwargs(cfg=args))
 
@@ -320,41 +236,14 @@ def main():
         if args.local_rank == 0:
             _logger.info("AMP not enabled. Training in float32.")
 
-    # optionally resume from a checkpoint
-    resume_epoch = None
-    if args.resume:
-        resume_epoch = resume_checkpoint(
-            model,
-            args.resume,
-            optimizer=None if args.no_resume_opt else optimizer,
-            loss_scaler=None if args.no_resume_opt else loss_scaler,
-            log_info=args.local_rank == 0,
-        )
-
     # setup exponential moving average of model weights, SWA could be used here too
     model_ema = None
     if args.model_ema:
-        # Important to create EMA model after cuda(), DP wrapper, and AMP but before SyncBN and DDP wrapper
         model_ema = ModelEmaV2(
             model, decay=args.model_ema_decay, device="cpu" if args.model_ema_force_cpu else None
         )
         if args.resume:
             load_checkpoint(model_ema.module, args.resume, use_ema=True)
-
-    # setup distributed training
-    if args.distributed:
-        if has_apex and use_amp == "apex":
-            # Apex DDP preferred unless native amp is activated
-            if args.local_rank == 0:
-                _logger.info("Using NVIDIA APEX DistributedDataParallel.")
-            model = ApexDDP(model, delay_allreduce=True)
-        else:
-            if args.local_rank == 0:
-                _logger.info("Using native Torch DistributedDataParallel.")
-            model = NativeDDP(
-                model, device_ids=[args.local_rank], broadcast_buffers=not args.no_ddp_bb
-            )
-        # NOTE: EMA model does not need to be wrapped by DDP
 
     # setup learning rate schedule and starting epoch
     lr_scheduler, num_epochs = create_scheduler(args, optimizer)
@@ -464,24 +353,18 @@ def main():
     )
 
     # setup loss function
-    if args.jsd_loss:
-        assert num_aug_splits > 1  # JSD only valid with aug splits set
-        train_loss_fn = JsdCrossEntropy(num_splits=num_aug_splits, smoothing=args.smoothing)
-    elif mixup_active:
-        # smoothing is handled with mixup target transform which outputs sparse, soft targets
-        if args.bce_loss:
-            train_loss_fn = BinaryCrossEntropy(target_threshold=args.bce_target_thresh)
-        else:
-            train_loss_fn = SoftTargetCrossEntropy()
-    elif args.smoothing:
-        if args.bce_loss:
-            train_loss_fn = BinaryCrossEntropy(
-                smoothing=args.smoothing, target_threshold=args.bce_target_thresh
-            )
-        else:
-            train_loss_fn = LabelSmoothingCrossEntropy(smoothing=args.smoothing)
+    if args.bce_loss:
+        train_loss_fn = BinaryCrossEntropy(target_threshold=args.bce_target_thresh)
     else:
-        train_loss_fn = nn.CrossEntropyLoss()
+        train_loss_fn = SoftTargetCrossEntropy()
+
+    if args.bce_loss:
+        train_loss_fn = BinaryCrossEntropy(
+            smoothing=args.smoothing, target_threshold=args.bce_target_thresh
+        )
+    else:
+        train_loss_fn = LabelSmoothingCrossEntropy(smoothing=args.smoothing)
+
     train_loss_fn = train_loss_fn.cuda()
     validate_loss_fn = nn.CrossEntropyLoss().cuda()
 
@@ -520,8 +403,6 @@ def main():
 
     try:
         for epoch in range(start_epoch, num_epochs):
-            if args.distributed and hasattr(loader_train.sampler, "set_epoch"):
-                loader_train.sampler.set_epoch(epoch)
 
             train_metrics = train_one_epoch(
                 epoch,
@@ -539,18 +420,11 @@ def main():
                 mixup_fn=mixup_fn,
             )
 
-            if args.distributed and args.dist_bn in ("broadcast", "reduce"):
-                if args.local_rank == 0:
-                    _logger.info("Distributing BatchNorm running means and vars")
-                distribute_bn(model, args.world_size, args.dist_bn == "reduce")
-
             eval_metrics = validate(
                 model, loader_eval, validate_loss_fn, args, amp_autocast=amp_autocast
             )
 
             if model_ema is not None and not args.model_ema_force_cpu:
-                if args.distributed and args.dist_bn in ("broadcast", "reduce"):
-                    distribute_bn(model_ema, args.world_size, args.dist_bn == "reduce")
                 ema_eval_metrics = validate(
                     model_ema.module,
                     loader_eval,
@@ -718,6 +592,8 @@ def train_one_epoch(
         optimizer.sync_lookahead()
 
     return OrderedDict([("loss", losses_m.avg)])
+
+
 
 
 def validate(model, loader, loss_fn, args, amp_autocast=suppress, log_suffix=""):

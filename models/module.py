@@ -7,12 +7,6 @@ from torch import nn
 
 
 class PatchMerging(nn.Module):
-    r"""Patch Merging Layer.
-    Args:
-        input_resolution (tuple[int]): Resolution of input feature.
-        dim (int): Number of input channels.
-        norm_layer (nn.Module, optional): Normalization layer.  Default: nn.LayerNorm
-    """
 
     def __init__(self, input_resolution, dim, norm_layer=nn.LayerNorm):
         super().__init__()
@@ -40,14 +34,6 @@ class PatchMerging(nn.Module):
 
 
 class PatchEmbed(nn.Module):
-    r"""Image to Patch Embedding
-    Args:
-        img_size (int): Image size.  Default: 224.
-        patch_size (int): Patch token size. Default: 4.
-        in_chans (int): Number of input image channels. Default: 3.
-        embed_dim (int): Number of linear projection output channels. Default: 96.
-        norm_layer (nn.Module, optional): Normalization layer. Default: None
-    """
 
     def __init__(self, img_size=224, patch_size=4, in_chans=3, embed_dim=96, norm_layer=None):
         super().__init__()
@@ -129,11 +115,6 @@ class PositionalEncodingFourier(nn.Module):
 
 
 class ResLPI(nn.Module):
-    """
-    Local Patch Interaction module that allows explicit communication between tokens in 3x3 windows
-    to augment the implicit communcation performed by the block diagonal scatter attention.
-    Implemented using 2 layers of separable 3x3 convolutions with GeLU and BatchNorm2d
-    """
 
     def __init__(
         self,
